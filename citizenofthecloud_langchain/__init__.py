@@ -28,6 +28,7 @@ from citizenofthecloud_langchain.tools import (
     VerifyAgentTool,
     LookupAgentTool,
     CheckTrustTool,
+    RegisterAgentTool,
 )
 from citizenofthecloud_langchain.middleware import (
     CloudIdentityMiddleware,
@@ -39,6 +40,7 @@ __all__ = [
     "VerifyAgentTool",
     "LookupAgentTool",
     "CheckTrustTool",
+    "RegisterAgentTool",
     "CloudIdentityMiddleware",
     "cloud_guard_chain",
     "CloudIdentityHTTPClient",

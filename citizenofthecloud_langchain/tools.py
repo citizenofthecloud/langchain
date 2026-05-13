@@ -220,3 +220,87 @@ class CheckTrustTool(BaseTool):
         """Check trust asynchronously."""
         import asyncio
         return await asyncio.to_thread(self._run, cloud_id, minimum_trust_score)
+
+
+# ═══════════════════════════════════════════════════════════
+# REGISTER AGENT TOOL
+# ═══════════════════════════════════════════════════════════
+
+class RegisterAgentInput(BaseModel):
+    """Input for registering a new Cloud Identity agent."""
+    sdk_token: str = Field(description="A cotc_sdk_* token from citizenofthecloud.com/account")
+    name: str = Field(description="Human-readable name for the agent")
+    declared_purpose: str = Field(description="What the agent does (<= 500 chars)")
+    autonomy_level: str = Field(default="tool", description="'tool' | 'assistant' | 'agent' | 'self-directing'")
+    capabilities: Optional[list] = Field(default=None, description="Optional list of capability strings")
+    operational_domain: Optional[str] = Field(default=None, description="Optional domain string")
+
+
+class RegisterAgentTool(BaseTool):
+    """
+    Register a new Cloud Identity agent.
+
+    Generates a fresh Ed25519 keypair locally, registers the public key plus
+    metadata with the Citizen of the Cloud registry under the supplied SDK
+    token, and returns the resulting cloud_id together with both keys. The
+    private key never leaves the caller's process — store it securely.
+
+    Use this once at agent setup. The returned cloud_id + private_key are
+    the inputs to CloudIdentity for signing subsequent requests.
+    """
+
+    name: str = "register_cloud_agent"
+    description: str = (
+        "Register a new agent with the Citizen of the Cloud registry. Generates "
+        "a keypair locally and posts the public key to the registry under your "
+        "SDK token. Returns cloud_id, public_key, private_key. Use ONCE at "
+        "agent setup time, not in regular operation."
+    )
+    args_schema: Type[BaseModel] = RegisterAgentInput
+    registry_url: str = "https://citizenofthecloud.com"
+
+    def _run(
+        self,
+        sdk_token: str,
+        name: str,
+        declared_purpose: str,
+        autonomy_level: str = "tool",
+        capabilities: Optional[list] = None,
+        operational_domain: Optional[str] = None,
+    ) -> str:
+        from citizenofthecloud import register_agent, RegistryError, CloudSDKError
+        try:
+            result = register_agent(
+                sdk_token=sdk_token,
+                name=name,
+                declared_purpose=declared_purpose,
+                autonomy_level=autonomy_level,
+                capabilities=capabilities,
+                operational_domain=operational_domain,
+                registry_url=self.registry_url,
+            )
+        except (RegistryError, CloudSDKError) as e:
+            return f"Registration error: {e}"
+
+        # Return the keys as a string so LangChain agents can act on them.
+        return (
+            f"Registered: {result['cloud_id']}\n"
+            f"name: {result['name']}\n"
+            f"public_key:\n{result['public_key']}\n"
+            f"private_key (STORE SECURELY):\n{result['private_key']}"
+        )
+
+    async def _arun(
+        self,
+        sdk_token: str,
+        name: str,
+        declared_purpose: str,
+        autonomy_level: str = "tool",
+        capabilities: Optional[list] = None,
+        operational_domain: Optional[str] = None,
+    ) -> str:
+        import asyncio
+        return await asyncio.to_thread(
+            self._run, sdk_token, name, declared_purpose,
+            autonomy_level, capabilities, operational_domain,
+        )

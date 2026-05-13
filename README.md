@@ -15,7 +15,42 @@ pip install -e ./langchain
 
 Requires the [Citizen of the Cloud Python SDK](https://github.com/citizenofthecloud/sdk-python).
 
+> **Using LangChain in JavaScript / TypeScript?** This package is Python-only. See [LangChain.js users](#langchainjs-users) below — the recommended path is the MCP server, which works with both Python and JS LangChain.
+
 ## Quick Start
+
+### 0. Register a New Agent (One-Time Setup)
+
+If you don't already have an agent, the `RegisterAgentTool` creates one in a single call. Generates a fresh keypair locally, registers the public key with the registry under your SDK token, and returns the `cloud_id` + private key. Get a token from [citizenofthecloud.com/account](https://citizenofthecloud.com/account).
+
+```python
+from citizenofthecloud_langchain import RegisterAgentTool
+
+tool = RegisterAgentTool()
+result = tool.invoke({
+    "sdk_token": "cotc_sdk_…",          # from /account
+    "name": "My Research Bot",
+    "declared_purpose": "Summarize papers and surface trends",
+    "autonomy_level": "tool",
+})
+# result is a string containing cloud_id + public_key + private_key.
+# Store the private_key securely — the server does not keep a copy.
+```
+
+Or invoke the underlying SDK function directly if you don't need the LangChain `BaseTool` wrapper:
+
+```python
+from citizenofthecloud import register_agent
+
+agent = register_agent(
+    sdk_token="cotc_sdk_…",
+    name="My Research Bot",
+    declared_purpose="Summarize papers and surface trends",
+    autonomy_level="tool",
+)
+print(agent["cloud_id"])
+print(agent["private_key"])   # store securely
+```
 
 ### 1. Give Your Agent Tools to Verify Others
 
@@ -126,7 +161,74 @@ response = requests.post(url, headers=signed_headers, json=data)
 signed_headers = middleware.sign_outbound_request(url, "POST", json.dumps(data))
 ```
 
+## LangChain.js users
+
+This package is Python-only. There is no `@citizenofthecloud/langchain` npm package today. LangChain.js users have two good options.
+
+### Option 1 (recommended): consume the MCP server
+
+The [Citizen of the Cloud MCP server](https://github.com/citizenofthecloud/mcp-server) exposes the full identity surface — verify, lookup, register, governance feed, the lot — as MCP tools. LangChain.js can consume any MCP server as a tool source via [`@langchain/mcp-adapters`](https://www.npmjs.com/package/@langchain/mcp-adapters), and you instantly get every MCP tool as a LangChain tool with no per-framework wrappers to maintain.
+
+```bash
+npm install @langchain/mcp-adapters @citizenofthecloud/mcp-server
+```
+
+```ts
+import { MultiServerMCPClient } from '@langchain/mcp-adapters';
+import { createReactAgent } from '@langchain/langgraph/prebuilt';
+import { ChatOpenAI } from '@langchain/openai';
+
+const client = new MultiServerMCPClient({
+  mcpServers: {
+    cotc: { command: 'npx', args: ['@citizenofthecloud/mcp-server'] },
+  },
+});
+const tools = await client.getTools();   // verify-agent, register-agent, lookup-agent, ...
+
+const agent = createReactAgent({
+  llm: new ChatOpenAI({ model: 'gpt-4o' }),
+  tools,
+});
+```
+
+The same MCP server also works with Claude Desktop, Cursor, and every other MCP-aware client — so improvements to the MCP integration benefit every language and framework at once. This is the path we recommend for cross-language deployments.
+
+### Option 2: wrap `@citizenofthecloud/sdk` directly
+
+If you'd rather not run an MCP process, [`@citizenofthecloud/sdk`](https://github.com/citizenofthecloud/sdk-js) is the JS twin of `citizenofthecloud` (Python). It exposes `registerAgent`, `verifyAgent`, `lookupAgent`, `CloudIdentity`, etc. — same surface, same wire protocol. Wrap it in a LangChain.js tool with ~15 lines:
+
+```ts
+import { DynamicStructuredTool } from '@langchain/core/tools';
+import { z } from 'zod';
+import { registerAgent } from '@citizenofthecloud/sdk';
+
+export const registerCloudAgentTool = new DynamicStructuredTool({
+  name: 'register_cloud_agent',
+  description:
+    'Register a new agent with the Citizen of the Cloud registry. ' +
+    'Generates a keypair locally and posts the public key under your SDK token.',
+  schema: z.object({
+    sdkToken: z.string().describe('cotc_sdk_* token from /account'),
+    name: z.string(),
+    declaredPurpose: z.string(),
+    autonomyLevel: z.enum(['tool', 'assistant', 'agent', 'self-directing']).default('tool'),
+  }),
+  func: async ({ sdkToken, name, declaredPurpose, autonomyLevel }) => {
+    const r = await registerAgent({ sdkToken, name, declaredPurpose, autonomyLevel });
+    return JSON.stringify({ cloudId: r.cloudId, privateKey: r.privateKey });
+  },
+});
+```
+
+The same pattern works for `verifyAgent`, `lookupAgent`, and the rest of the sdk-js surface. Option 1 is still preferred for most users because the MCP server already does this wrapping once for every framework.
+
 ## Tools Reference
+
+### RegisterAgentTool
+
+One-shot agent registration. Generates a fresh Ed25519 keypair locally, posts the public key to `/api/register` under your SDK token, and returns the `cloud_id` together with both keys. The private key never leaves the caller's process — store it securely; the server keeps only the public key.
+
+**When to use:** Bootstrap a new agent from code instead of clicking through the website. Use once at agent setup time, not in regular operation. Requires a `cotc_sdk_*` token from [/account](https://citizenofthecloud.com/account).
 
 ### VerifyAgentTool
 
@@ -152,6 +254,7 @@ Quick pass/fail trust check against a threshold. Returns whether the agent meets
 |---|---|
 | `CLOUD_ID` | Your agent's Cloud ID (e.g., `cc-7f3a9b2e-...`) |
 | `CLOUD_PRIVATE_KEY` | Your agent's Ed25519 private key (PEM format) |
+| `COTC_SDK_TOKEN` | Bootstrap SDK token (`cotc_sdk_*`) used by `RegisterAgentTool`. Get one from [citizenofthecloud.com/account](https://citizenofthecloud.com/account). |
 
 ## Links
 
