@@ -4,16 +4,20 @@ LangChain integration for the [Citizen of the Cloud](https://citizenofthecloud.c
 
 ## Install
 
+This package is currently distributed directly from GitHub. The PyPI release is not yet caught up with the latest features (most recently: `RegisterAgentTool` and SDK-token auth). For now, install from GitHub:
+
 ```bash
-# Clone (early access — not yet on PyPI)
 git clone https://github.com/citizenofthecloud/langchain.git
 pip install -e ./langchain
-
-# Once published:
-# pip install citizenofthecloud-langchain
 ```
 
-Requires the [Citizen of the Cloud Python SDK](https://github.com/citizenofthecloud/sdk-python).
+Or as a git dependency in `requirements.txt`:
+
+```
+citizenofthecloud-langchain @ git+https://github.com/citizenofthecloud/langchain.git@main
+```
+
+`pip` will also pull the [Citizen of the Cloud Python SDK](https://github.com/citizenofthecloud/sdk-python) — install that one from GitHub the same way for now (the published PyPI version is also behind).
 
 > **Using LangChain in JavaScript / TypeScript?** This package is Python-only. See [LangChain.js users](#langchainjs-users) below — the recommended path is the MCP server, which works with both Python and JS LangChain.
 
