@@ -1,85 +1,82 @@
 # citizenofthecloud-langchain
 
-LangChain integration for the [Citizen of the Cloud](https://citizenofthecloud.com) identity protocol. Add cryptographic identity and trust verification to your LangChain agents.
+LangChain integration for the [Citizen of the Cloud](https://citizenofthecloud.com) identity protocol.
+
+**20 items** — 17 agent-callable `BaseTool` subclasses + 3 structural primitives (FastAPI route guard, framework-native gate, observability callbacks). Latest version: **`0.2.0`**.
+
+---
 
 ## Install
 
-This package is currently distributed directly from GitHub. The PyPI release is not yet caught up with the latest features (most recently: `RegisterAgentTool` and SDK-token auth). For now, install from GitHub:
-
 ```bash
+# From GitHub (recommended while PyPI catches up)
+pip install git+https://github.com/citizenofthecloud/langchain.git
+
+# Editable dev install
 git clone https://github.com/citizenofthecloud/langchain.git
 pip install -e ./langchain
 ```
 
-Or as a git dependency in `requirements.txt`:
+Pulls [`citizenofthecloud`](https://github.com/citizenofthecloud/sdk-python) (Python SDK) and `langchain-core` as deps. Requires Python ≥ 3.9.
 
-```
-citizenofthecloud-langchain @ git+https://github.com/citizenofthecloud/langchain.git@main
-```
+> **Using LangChain.js?** This package is Python-only. The recommended path for LangChain.js users is the [Citizen of the Cloud MCP server](https://github.com/citizenofthecloud/mcp-server) consumed via `@langchain/mcp-adapters` — see the [LangChain.js section](#langchainjs-users) below.
 
-`pip` will also pull the [Citizen of the Cloud Python SDK](https://github.com/citizenofthecloud/sdk-python) — install that one from GitHub the same way for now (the published PyPI version is also behind).
+---
 
-> **Using LangChain in JavaScript / TypeScript?** This package is Python-only. See [LangChain.js users](#langchainjs-users) below — the recommended path is the MCP server, which works with both Python and JS LangChain.
+## The 20-item surface
 
-## Quick Start
+### 17 agent-callable `BaseTool` subclasses
 
-### 0. Register a New Agent (One-Time Setup)
+| # | Tool class | Purpose |
+|---|---|---|
+| 1 | `LookupAgentTool` | Read another agent's public passport |
+| 2 | `GetServerIdentityTool` | Fetch this agent's own passport |
+| 3 | `ListDirectoryTool` | Browse the public agent directory |
+| 4 | `GovernanceFeedTool` | Read recent governance events |
+| 5 | `VerifyAgentTool` | Verify signed headers (simple) |
+| 6 | `VerifyRequestTool` | Verify request-bound signature |
+| 7 | `RequestChallengeTool` | Ask the registry for a nonce |
+| 8 | `RespondToChallengeTool` | Submit a signed nonce |
+| 9 | `SignChallengeTool` | Sign a nonce locally |
+| 10 | `ProveIdentityTool` | Full challenge/sign/respond loop |
+| 11 | `SignHeadersTool` | Produce timestamp-bound headers |
+| 12 | `SignRequestTool` | Produce request-bound headers |
+| 13 | `CloudFetchTool` | Auto-signed HTTP request |
+| 14 | `GenerateKeypairTool` | Make a fresh Ed25519 keypair |
+| 15 | `RegisterAgentTool` | Programmatic agent registration (SDK token) |
+| 16 | `ReportAgentTool` | File a governance report (SDK token w/ `manage`) |
+| 17 | `CheckTrustTool` | Trust threshold PASS/FAIL helper |
 
-If you don't already have an agent, the `RegisterAgentTool` creates one in a single call. Generates a fresh keypair locally, registers the public key with the registry under your SDK token, and returns the `cloud_id` + private key. Get a token from [citizenofthecloud.com/account](https://citizenofthecloud.com/account).
+### 3 structural primitives
 
-```python
-from citizenofthecloud_langchain import RegisterAgentTool
+| # | Item | Purpose |
+|---|---|---|
+| 18 | `CloudIdentityRouteGuard` / `cloud_guard_route` | FastAPI BaseHTTPMiddleware + route decorator |
+| 19 | `cloud_guard_chain` | Pre-chain verification gate (framework-native) |
+| 20 | `CloudIdentityCallbackHandler` | LangChain `BaseCallbackHandler` for observability |
 
-tool = RegisterAgentTool()
-result = tool.invoke({
-    "sdk_token": "cotc_sdk_…",          # from /account
-    "name": "My Research Bot",
-    "declared_purpose": "Summarize papers and surface trends",
-    "autonomy_level": "tool",
-})
-# result is a string containing cloud_id + public_key + private_key.
-# Store the private_key securely — the server does not keep a copy.
-```
+Grab all 17 agent-callable tools at once with `cloud_identity_tools()`.
 
-Or invoke the underlying SDK function directly if you don't need the LangChain `BaseTool` wrapper:
+---
 
-```python
-from citizenofthecloud import register_agent
-
-agent = register_agent(
-    sdk_token="cotc_sdk_…",
-    name="My Research Bot",
-    declared_purpose="Summarize papers and surface trends",
-    autonomy_level="tool",
-)
-print(agent["cloud_id"])
-print(agent["private_key"])   # store securely
-```
-
-### 1. Give Your Agent Tools to Verify Others
+## Quick start (register → verify → run an agent)
 
 ```python
 from langchain_openai import ChatOpenAI
 from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain_core.prompts import ChatPromptTemplate
 
-from citizenofthecloud_langchain import VerifyAgentTool, LookupAgentTool, CheckTrustTool
+from citizenofthecloud_langchain import cloud_identity_tools
 
-# Create the identity tools
-tools = [
-    VerifyAgentTool(),
-    LookupAgentTool(),
-    CheckTrustTool(),
-]
+# Hand the LLM all 17 identity tools in one line
+tools = cloud_identity_tools()
 
-# Build the agent
 llm = ChatOpenAI(model="gpt-4o", temperature=0)
 prompt = ChatPromptTemplate.from_messages([
     ("system",
-     "You are an AI agent with access to the Citizen of the Cloud identity "
-     "protocol. Before interacting with other agents, always verify their "
-     "identity and check their trust score. Do not proceed with agents that "
-     "have a trust score below 0.5 or have not signed the covenant."),
+     "You are an AI agent. Before interacting with any other agent, verify "
+     "their identity and check their trust score. Refuse agents with trust < 0.5 "
+     "or unsigned covenant."),
     ("human", "{input}"),
     ("placeholder", "{agent_scratchpad}"),
 ])
@@ -87,91 +84,188 @@ prompt = ChatPromptTemplate.from_messages([
 agent = create_tool_calling_agent(llm, tools, prompt)
 executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
 
-# The agent can now verify other agents as part of its reasoning
 result = executor.invoke({
-    "input": "I received a request from agent cc-7f3a9b2e-4d1c-8e7f-a3b2-9c1d5e8f4a6b. "
-             "Check their trust score before I process their request. "
-             "Minimum trust should be 0.7."
+    "input": "Look up agent cc-7f3a9b2e-… and tell me whether they pass a 0.7 trust threshold."
 })
 ```
 
-### 2. Auto-Sign Outbound Requests
+The LLM will pick `LookupAgentTool` and `CheckTrustTool` itself based on the tool descriptions.
+
+---
+
+## Examples per surface
+
+### Registration (#15 RegisterAgentTool)
+
+One-time bootstrap. Generates an Ed25519 keypair locally, registers the public key with the registry under your SDK token. Get a token from [/account](https://citizenofthecloud.com/account).
 
 ```python
-from citizenofthecloud_langchain import CloudIdentityHTTPClient
+from citizenofthecloud_langchain import RegisterAgentTool
 
-# All HTTP requests are automatically signed with your Cloud Identity
-client = CloudIdentityHTTPClient.from_env()  # Uses CLOUD_ID and CLOUD_PRIVATE_KEY
-
-# Use in place of requests
-response = client.post(
-    "https://other-agent.com/api/analyze",
-    json={"dataset": "sales-q4.csv", "type": "trend"},
-)
+tool = RegisterAgentTool()
+out = tool.invoke({
+    "sdk_token": "cotc_sdk_…",
+    "name": "My Research Bot",
+    "declared_purpose": "Summarize papers and surface trends",
+    "autonomy_level": "tool",
+})
+print(out)   # contains cloud_id, public_key, private_key (STORE SECURELY)
 ```
 
-### 3. Verify Incoming Requests (Guard Chain)
+### Verification (#5 VerifyAgentTool, #17 CheckTrustTool)
+
+```python
+from citizenofthecloud_langchain import VerifyAgentTool, CheckTrustTool
+
+verify = VerifyAgentTool()
+out = verify.invoke({
+    "cloud_id": "cc-abc...",
+    "timestamp": "2026-05-13T12:00:00Z",
+    "signature": "iJk3...",
+})
+# "VERIFIED — Agent: ResearchBot, Cloud ID: cc-..., Trust Score: 0.7, ..."
+
+check = CheckTrustTool()
+out = check.invoke({"cloud_id": "cc-abc...", "minimum_trust_score": 0.7})
+# "PASS — ResearchBot trust=0.85 (threshold=0.7)"
+```
+
+### Signing & cloud-fetch (#11, #12, #13)
+
+```python
+from citizenofthecloud_langchain import SignHeadersTool, SignRequestTool, CloudFetchTool
+
+# 11 — simple headers
+SignHeadersTool().invoke({
+    "cloud_id": "cc-...", "private_key": "-----BEGIN PRIVATE KEY-----\n...",
+})
+# X-Cloud-ID / X-Cloud-Timestamp / X-Cloud-Signature
+
+# 12 — request-bound headers
+SignRequestTool().invoke({
+    "cloud_id": "cc-...", "private_key": "...",
+    "url": "https://other.com/api/data", "method": "POST", "body": '{"q":"x"}',
+})
+
+# 13 — signed HTTP call in one tool
+CloudFetchTool().invoke({
+    "cloud_id": "cc-...", "private_key": "...",
+    "url": "https://other.com/api/data", "method": "POST", "body": '{"q":"x"}',
+})
+```
+
+### Challenge / Respond (#7, #8, #9, #10)
+
+```python
+from citizenofthecloud_langchain import (
+    RequestChallengeTool, SignChallengeTool,
+    RespondToChallengeTool, ProveIdentityTool,
+)
+
+# 10 — full loop (recommended)
+ProveIdentityTool().invoke({"cloud_id": "cc-...", "private_key": "-----BEGIN..."})
+# "VERIFIED — Agent: ..."
+
+# Or compose manually: 7 → 9 → 8
+ch = RequestChallengeTool().invoke({"cloud_id": "cc-..."})       # nonce=...
+sig = SignChallengeTool().invoke({"nonce": "...", "private_key": "..."})
+RespondToChallengeTool().invoke({"cloud_id": "cc-...", "nonce": "...", "signature": sig})
+```
+
+### Registry queries (#1, #2, #3, #4)
+
+```python
+from citizenofthecloud_langchain import (
+    LookupAgentTool, GetServerIdentityTool,
+    ListDirectoryTool, GovernanceFeedTool,
+)
+
+LookupAgentTool().invoke({"cloud_id": "cc-abc..."})
+GetServerIdentityTool().invoke({"cloud_id": "cc-self...", "private_key": "..."})
+ListDirectoryTool().invoke({"limit": 10})
+GovernanceFeedTool().invoke({"limit": 10})
+```
+
+### Governance reporting (#16 ReportAgentTool)
+
+```python
+from citizenofthecloud_langchain import ReportAgentTool
+
+ReportAgentTool().invoke({
+    "sdk_token": "cotc_sdk_…",       # needs 'manage' scope
+    "cloud_id": "cc-bad...",
+    "report_type": "spam",            # impersonation | malicious_behavior | spam | covenant_violation | inaccurate_registration
+    "evidence": "Sent unsolicited bulk requests to /api/task every 100ms for 6 hours.",
+})
+```
+
+### Structural primitive #18 — FastAPI route guard
+
+Two interchangeable forms — pick whichever fits your app shape.
 
 ```python
 from fastapi import FastAPI, Request
-from citizenofthecloud_langchain import cloud_guard_chain
+from citizenofthecloud import TrustPolicy
+from citizenofthecloud_langchain import CloudIdentityRouteGuard, cloud_guard_route
 
 app = FastAPI()
 
-@app.post("/api/analyze")
-async def analyze(request: Request):
-    # Verify the requesting agent before running your chain
-    guard = cloud_guard_chain(
-        headers=dict(request.headers),
-        minimum_trust_score=0.5,
-        require_covenant=True,
-    )
-
-    if not guard["verified"]:
-        return {"error": "Identity verification failed", "reason": guard["reason"]}, 401
-
-    # Agent is verified — safe to proceed
-    agent = guard["agent"]
-    print(f"Processing request from {agent['name']} (trust: {agent['trust_score']})")
-
-    # Run your LangChain chain here...
-    return {"status": "complete"}
-```
-
-### 4. Full Middleware Pattern
-
-```python
-from citizenofthecloud_langchain import CloudIdentityMiddleware
-
-# Initialize once
-middleware = CloudIdentityMiddleware.from_env(
-    trust_policy={
-        "minimum_trust_score": 0.5,
-        "require_covenant": True,
-        "allowed_autonomy_levels": ["agent", "assistant"],
-    }
+# App-wide ASGI middleware
+app.add_middleware(
+    CloudIdentityRouteGuard,
+    policy=TrustPolicy(minimum_trust_score=0.5),
 )
 
-# Verify inbound
-result = middleware.verify_inbound(request.headers)
-if not result["verified"]:
-    return {"error": result["reason"]}
-
-# Sign outbound
-signed_headers = middleware.sign_outbound()
-response = requests.post(url, headers=signed_headers, json=data)
-
-# Request-bound signing (includes URL, method, body hash)
-signed_headers = middleware.sign_outbound_request(url, "POST", json.dumps(data))
+# Or per-route decorator
+@app.post("/chain")
+@cloud_guard_route(policy=TrustPolicy(minimum_trust_score=0.5))
+async def run_chain(request: Request):
+    return await my_chain.ainvoke(await request.json())
 ```
+
+### Structural primitive #19 — pre-chain gate (`cloud_guard_chain`)
+
+In-process verification gate. Use when you're not serving HTTP — e.g. before a `chain.invoke()` triggered by a queue or scheduler.
+
+```python
+from citizenofthecloud_langchain import cloud_guard_chain
+
+guard = cloud_guard_chain(
+    headers=incoming_headers,
+    minimum_trust_score=0.5,
+    require_covenant=True,
+)
+if not guard["verified"]:
+    raise PermissionError(guard["reason"])
+
+agent_info = guard["agent"]
+result = my_chain.invoke({"input": query, "requester": agent_info["name"]})
+```
+
+### Structural primitive #20 — observability callbacks
+
+```python
+from citizenofthecloud_langchain import CloudIdentityCallbackHandler
+from langchain.agents import AgentExecutor
+
+handler = CloudIdentityCallbackHandler()
+
+executor = AgentExecutor(
+    agent=agent, tools=tools,
+    callbacks=[handler],   # logs every identity-tool start/end with verdict
+)
+executor.invoke({"input": "..."})
+
+# Inspect afterwards
+for event in handler.events:
+    print(event["type"], event.get("tool"), event.get("verdict"))
+```
+
+---
 
 ## LangChain.js users
 
-This package is Python-only. There is no `@citizenofthecloud/langchain` npm package today. LangChain.js users have two good options.
-
-### Option 1 (recommended): consume the MCP server
-
-The [Citizen of the Cloud MCP server](https://github.com/citizenofthecloud/mcp-server) exposes the full identity surface — verify, lookup, register, governance feed, the lot — as MCP tools. LangChain.js can consume any MCP server as a tool source via [`@langchain/mcp-adapters`](https://www.npmjs.com/package/@langchain/mcp-adapters), and you instantly get every MCP tool as a LangChain tool with no per-framework wrappers to maintain.
+This package is Python-only. There is no `@citizenofthecloud/langchain` npm package today — that's a deliberate "lean on MCP" choice. The recommended path:
 
 ```bash
 npm install @langchain/mcp-adapters @citizenofthecloud/mcp-server
@@ -187,7 +281,7 @@ const client = new MultiServerMCPClient({
     cotc: { command: 'npx', args: ['@citizenofthecloud/mcp-server'] },
   },
 });
-const tools = await client.getTools();   // verify-agent, register-agent, lookup-agent, ...
+const tools = await client.getTools();   // all 14 MCP tools as LangChain tools
 
 const agent = createReactAgent({
   llm: new ChatOpenAI({ model: 'gpt-4o' }),
@@ -195,75 +289,32 @@ const agent = createReactAgent({
 });
 ```
 
-The same MCP server also works with Claude Desktop, Cursor, and every other MCP-aware client — so improvements to the MCP integration benefit every language and framework at once. This is the path we recommend for cross-language deployments.
+The same MCP server also works with Claude Desktop, Cursor, and every other MCP-aware client.
 
-### Option 2: wrap `@citizenofthecloud/sdk` directly
+For a native JS SDK without MCP, see [`@citizenofthecloud/sdk`](https://github.com/citizenofthecloud/sdk-js) — it has the same 17-tool surface and you can wrap any of those calls in a `DynamicStructuredTool` in ~15 lines.
 
-If you'd rather not run an MCP process, [`@citizenofthecloud/sdk`](https://github.com/citizenofthecloud/sdk-js) is the JS twin of `citizenofthecloud` (Python). It exposes `registerAgent`, `verifyAgent`, `lookupAgent`, `CloudIdentity`, etc. — same surface, same wire protocol. Wrap it in a LangChain.js tool with ~15 lines:
+---
 
-```ts
-import { DynamicStructuredTool } from '@langchain/core/tools';
-import { z } from 'zod';
-import { registerAgent } from '@citizenofthecloud/sdk';
-
-export const registerCloudAgentTool = new DynamicStructuredTool({
-  name: 'register_cloud_agent',
-  description:
-    'Register a new agent with the Citizen of the Cloud registry. ' +
-    'Generates a keypair locally and posts the public key under your SDK token.',
-  schema: z.object({
-    sdkToken: z.string().describe('cotc_sdk_* token from /account'),
-    name: z.string(),
-    declaredPurpose: z.string(),
-    autonomyLevel: z.enum(['tool', 'assistant', 'agent', 'self-directing']).default('tool'),
-  }),
-  func: async ({ sdkToken, name, declaredPurpose, autonomyLevel }) => {
-    const r = await registerAgent({ sdkToken, name, declaredPurpose, autonomyLevel });
-    return JSON.stringify({ cloudId: r.cloudId, privateKey: r.privateKey });
-  },
-});
-```
-
-The same pattern works for `verifyAgent`, `lookupAgent`, and the rest of the sdk-js surface. Option 1 is still preferred for most users because the MCP server already does this wrapping once for every framework.
-
-## Tools Reference
-
-### RegisterAgentTool
-
-One-shot agent registration. Generates a fresh Ed25519 keypair locally, posts the public key to `/api/register` under your SDK token, and returns the `cloud_id` together with both keys. The private key never leaves the caller's process — store it securely; the server keeps only the public key.
-
-**When to use:** Bootstrap a new agent from code instead of clicking through the website. Use once at agent setup time, not in regular operation. Requires a `cotc_sdk_*` token from [/account](https://citizenofthecloud.com/account).
-
-### VerifyAgentTool
-
-Full cryptographic verification of an agent's identity from request headers. Checks Ed25519 signature, timestamp freshness, registry status, and trust score.
-
-**When to use:** An agent has sent you a signed request and you need to confirm their identity.
-
-### LookupAgentTool
-
-Profile lookup from the Cloud Identity registry. Returns name, purpose, trust score, capabilities, and status. No cryptographic verification — informational only.
-
-**When to use:** You want to learn about an agent before deciding whether to interact.
-
-### CheckTrustTool
-
-Quick pass/fail trust check against a threshold. Returns whether the agent meets the minimum trust score.
-
-**When to use:** Simple gate decision — should I delegate this task to this agent?
-
-## Environment Variables
+## Environment variables
 
 | Variable | Description |
 |---|---|
 | `CLOUD_ID` | Your agent's Cloud ID (e.g., `cc-7f3a9b2e-...`) |
 | `CLOUD_PRIVATE_KEY` | Your agent's Ed25519 private key (PEM format) |
-| `COTC_SDK_TOKEN` | Bootstrap SDK token (`cotc_sdk_*`) used by `RegisterAgentTool`. Get one from [citizenofthecloud.com/account](https://citizenofthecloud.com/account). |
+| `COTC_SDK_TOKEN` | Bootstrap SDK token (`cotc_sdk_*`) used by `RegisterAgentTool` and `ReportAgentTool`. Get one at [citizenofthecloud.com/account](https://citizenofthecloud.com/account). |
+
+---
 
 ## Links
 
-- [Citizen of the Cloud](https://citizenofthecloud.com)
-- [SDK Documentation](https://citizenofthecloud.com/docs)
+- [citizenofthecloud.com](https://citizenofthecloud.com)
+- [Documentation](https://citizenofthecloud.com/docs)
 - [Specification](https://citizenofthecloud.com/spec)
-- [Python SDK](https://github.com/citizenofthecloud/sdk-python)
-- [Register an Agent](https://citizenofthecloud.com/register)
+- [Account / SDK tokens](https://citizenofthecloud.com/account)
+- Sister framework integrations: [crewai](https://github.com/citizenofthecloud/crewai) · [agent-framework](https://github.com/citizenofthecloud/agent-framework)
+- Underlying SDKs: [sdk-python](https://github.com/citizenofthecloud/sdk-python) · [sdk-js](https://github.com/citizenofthecloud/sdk-js)
+- [MCP server](https://github.com/citizenofthecloud/mcp-server)
+
+## License
+
+MIT
