@@ -1,49 +1,84 @@
 """
 Citizen of the Cloud — LangChain Integration
 
-Adds cryptographic identity and trust verification to LangChain agents.
-Wraps the citizenofthecloud Python SDK into LangChain-compatible tools
-and middleware.
+Cryptographic identity and trust verification for LangChain agents.
 
-Tools:
-    VerifyAgentTool     — Verify another agent's identity and trust score
-    LookupAgentTool     — Look up an agent's profile by Cloud ID
-    CheckTrustTool      — Quick trust score check with pass/fail threshold
+Tool surface — 20 items (17 agent-callable + 3 structural primitives):
 
-Middleware:
-    CloudIdentityMiddleware — Auto-sign all outbound requests
-    cloud_guard_chain       — Verify incoming requests before chain execution
+Agent-callable BaseTool subclasses (17):
+    LookupAgentTool, GetServerIdentityTool, ListDirectoryTool,
+    GovernanceFeedTool, VerifyAgentTool, VerifyRequestTool,
+    RequestChallengeTool, RespondToChallengeTool, SignChallengeTool,
+    ProveIdentityTool, SignHeadersTool, SignRequestTool, CloudFetchTool,
+    GenerateKeypairTool, RegisterAgentTool, ReportAgentTool, CheckTrustTool
 
-Usage:
-    from citizenofthecloud_langchain import (
-        VerifyAgentTool,
-        LookupAgentTool,
-        CheckTrustTool,
-        CloudIdentityMiddleware,
-        cloud_guard_chain,
-    )
+Structural primitives (3):
+    18. CloudIdentityRouteGuard / cloud_guard_route — FastAPI route-guard middleware
+    19. cloud_guard_chain — pre-chain verification gate (framework-native)
+    20. CloudIdentityCallbackHandler — LangChain observability callbacks
 """
 
 from citizenofthecloud_langchain.tools import (
-    VerifyAgentTool,
+    # Agent-callable tools (17)
     LookupAgentTool,
-    CheckTrustTool,
+    GetServerIdentityTool,
+    ListDirectoryTool,
+    GovernanceFeedTool,
+    VerifyAgentTool,
+    VerifyRequestTool,
+    RequestChallengeTool,
+    RespondToChallengeTool,
+    SignChallengeTool,
+    ProveIdentityTool,
+    SignHeadersTool,
+    SignRequestTool,
+    CloudFetchTool,
+    GenerateKeypairTool,
     RegisterAgentTool,
+    ReportAgentTool,
+    CheckTrustTool,
+    # convenience
+    cloud_identity_tools,
 )
 from citizenofthecloud_langchain.middleware import (
     CloudIdentityMiddleware,
     cloud_guard_chain,
 )
 from citizenofthecloud_langchain.http import CloudIdentityHTTPClient
+from citizenofthecloud_langchain.http_middleware import (
+    CloudIdentityRouteGuard,
+    cloud_guard_route,
+)
+from citizenofthecloud_langchain.callbacks import CloudIdentityCallbackHandler
 
 __all__ = [
-    "VerifyAgentTool",
+    # Agent-callable tools (17)
     "LookupAgentTool",
-    "CheckTrustTool",
+    "GetServerIdentityTool",
+    "ListDirectoryTool",
+    "GovernanceFeedTool",
+    "VerifyAgentTool",
+    "VerifyRequestTool",
+    "RequestChallengeTool",
+    "RespondToChallengeTool",
+    "SignChallengeTool",
+    "ProveIdentityTool",
+    "SignHeadersTool",
+    "SignRequestTool",
+    "CloudFetchTool",
+    "GenerateKeypairTool",
     "RegisterAgentTool",
+    "ReportAgentTool",
+    "CheckTrustTool",
+    # Structural primitives (3)
+    "CloudIdentityRouteGuard",      # 18 — http-middleware
+    "cloud_guard_route",            # 18 — http-middleware (decorator form)
+    "cloud_guard_chain",            # 19 — framework-native gate
+    "CloudIdentityCallbackHandler", # 20 — observability callbacks
+    # Helpers / legacy
+    "cloud_identity_tools",
     "CloudIdentityMiddleware",
-    "cloud_guard_chain",
     "CloudIdentityHTTPClient",
 ]
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

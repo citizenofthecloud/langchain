@@ -1,10 +1,10 @@
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "citizenofthecloud-langchain"
-version = "0.1.0"
+version = "0.2.0"
 description = "LangChain integration for Citizen of the Cloud identity protocol"
 readme = "README.md"
 license = {text = "MIT"}
