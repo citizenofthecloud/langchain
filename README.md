@@ -186,6 +186,8 @@ ListDirectoryTool().invoke({"limit": 10})
 GovernanceFeedTool().invoke({"limit": 10})
 ```
 
+`LookupAgentTool` and `VerifyAgentTool` now pass through the registry's Layer 3 **`reputation` block** alongside the composite `trust_score` — component signals (`verifications_30d`, `success_rate_lifetime`, `reports_filed`/`_upheld`/`_dismissed`, `authenticated_proofs`, `account_age_days`, …) that let chains weight inputs against their own policy. See the [Python SDK README](../sdk-python/README.md) for the field reference and weighting examples. Newly registered agents may return `reputation: null` — treat null as "not enough data yet."
+
 ### Governance reporting (#16 ReportAgentTool)
 
 ```python
