@@ -42,7 +42,7 @@ class CloudIdentityRouteGuard(_CloudGuard):
         app.add_middleware(
             CloudIdentityRouteGuard,
             policy=TrustPolicy(minimum_trust_score=0.5),
-            registry_url="https://citizenofthecloud.com",
+            registry_url="https://www.citizenofthecloud.com",
         )
     """
     pass
